@@ -871,7 +871,47 @@ var ImgCache = {
 
         return Helpers.EntryGetURL(ImgCache.attributes.dirEntry);
     };
-
+    
+    // Finds all images inside a DOM node
+    // and stores/loads them using cache automatically
+    ImgCache.cacheAndLoadAllImages = function (selector, expiry) {
+        // Default expiry to an hour
+        var expiry = expiry || 60 * 60 * 1000;
+        // Find all images in selector and store/use cache
+        $('img', selector).each(function(i, e) {
+            var target = $(e);
+            var url = $.trim(target.attr('src'));
+            if (url) {
+              ImgCache.isCached(url, function(path, success) {
+                if (success) {
+                  // Check the last modified time...
+                  ImgCache.getCachedFile(url, function(url, entry) {
+                      entry.getMetadata(function(metadata) {
+                          var now = (new Date()).getTime();
+                          if (metadata && metadata.modificationTime && metadata.modificationTime > now - expiry) {
+                              // Too recent? Just use it
+                              ImgCache.useCachedFileWithSource(target, url);
+                          } else {
+                              // Too old? Replace cache
+                              ImgCache.removeFile(url, function() {
+                                ImgCache.cacheFile(url, function () {
+                                  ImgCache.useCachedFile(target);
+                                });
+                              });
+                          }
+                      });
+                  });
+                } else {
+                  // Not there? need to cache/reload the image
+                  ImgCache.cacheFile(url, function () {
+                    ImgCache.useCachedFile(target);
+                  });
+                }
+              });
+            }
+        });
+    };    
+    
     // private methods can now be used publicly
     ImgCache.helpers = Helpers;
     ImgCache.domHelpers = DomHelpers;
