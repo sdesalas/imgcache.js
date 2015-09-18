@@ -130,7 +130,7 @@ var ImgCache = {
     };
 
     Helpers.isCordova = function () {
-        return (typeof cordova !== 'undefined' || typeof phonegap !== 'undefined');
+        return (window.navigator.platform.toLowerCase() !== 'win32' && (typeof cordova !== 'undefined' || typeof phonegap !== 'undefined'));
     };
 
     Helpers.isCordovaAndroid = function () {
@@ -870,6 +870,63 @@ var ImgCache = {
         }
 
         return Helpers.EntryGetURL(ImgCache.attributes.dirEntry);
+    };
+
+    // Finds all images inside a DOM node
+    // and stores/loads them using cache automatically
+    ImgCache.cacheAndLoadAllImages = function (selector, expiry, progressCallback) {
+        // Default expiry to 30 days
+        var expiry = expiry || 60 * 60 * 1000 * 30;
+        // Find all images in selector and store/use cache
+        var images = $('img', selector);
+        var loaded = 0;
+        images.each(function(i, e) {
+            var target = $(e);
+            var url = $.trim(target.attr('src'));
+            if (url) {
+              try {
+              ImgCache.isCached(url, function(path, success) {
+                if (success) {
+                  // Its cached
+                  ImgCache.getCachedFileURL(url, function(url, local_url) {
+                      console.log('Using cached image: ', local_url);
+                  });
+                  // Check the timestamp on cached file
+                  ImgCache.getCachedFile(url, function(url, entry) {
+                      entry.getMetadata(function(metadata) {
+                          var now = (new Date()).getTime();
+                          if (metadata && metadata.modificationTime && metadata.modificationTime > now - expiry) {
+                              // Too recent? Just use it
+                              if (progressCallback) progressCallback(++loaded, images.length, url);
+                              ImgCache.useCachedFileWithSource(target, url);
+                          } else {
+                              // Too old? Replace cache
+                              var replaceCache = function() {
+                                ImgCache.cacheFile(url, function () {
+                                  if (progressCallback) progressCallback(++loaded, images.length, url);
+                                  ImgCache.useCachedFile(target);
+                                });
+                              };
+                              ImgCache.removeFile(url, replaceCache, replaceCache);
+                          }
+                      });
+                  });
+                } else {
+                  // Not there? need to cache/reload the image
+                  ImgCache.cacheFile(url, function () {
+                    if (progressCallback) progressCallback(++loaded, images.length, url);
+                    ImgCache.useCachedFile(target);
+                   });
+                }
+              });
+              } catch(e) {
+                  console.log('Cached image error', e);
+                  if (progressCallback) progressCallback(++loaded, images.length, url);
+              }
+            }
+        });
+        // Feedback number of images.
+        return images.length;
     };
 
     // private methods can now be used publicly
